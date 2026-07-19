@@ -77,6 +77,19 @@ The repository is intended to serve as a reusable foundation for future formaliz
 
 ---
 
+## Potential Mathlib Contributions
+
+Some results developed in this repository are intentionally stated at a level of generality that may make them useful beyond the Lorenz-system formalization.
+
+In particular, the project currently contains general first-exit lemmas for continuous and right-continuous maps:
+
+- `RightContinuous.firstExit_mem_closure`
+- `Continuous.firstExit_mem_frontier`
+
+These results characterize the value of a function at the infimum of a set of exit times. They are formulated for conditionally complete linear orders and arbitrary topological codomains, rather than specifically for trajectories of the Lorenz system.
+
+---
+
 ## Presentation
 
 The `Presentation/` directory contains materials developed for the **ICARM 2026 Summer School**, including:
