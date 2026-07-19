@@ -19,14 +19,14 @@ The long-term objective of this repository is to construct a fully machine-verif
 
 ```
 .
-├── LorenzTrappingRegionLemma/          # Lean source files
+├── LorenzTrappingRegionLemma/                 # Lean source files
 │   ├── Basic.lean
 │   └── Proof.pdf
-├── Presentation/                       # ICARM Summer School presentation
+├── Presentation/                              # ICARM Summer School presentation
 │   ├── assets/
 │   ├── index.html
 │   └── lorenz-lean-blueprint-final.html
-├── assets/                             # Assets for the repository website
+├── assets/                                    # Assets for the repository website
 ├── .gitattributes
 ├── .gitignore
 ├── README.md
