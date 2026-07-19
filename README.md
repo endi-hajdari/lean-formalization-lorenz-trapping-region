@@ -79,7 +79,17 @@ The repository is intended to serve as a reusable foundation for future formaliz
 
 ## Presentation
 
-The repository also contains the presentation materials used during the **ICARM 2026 Summer School** in the `Presentation/` directory.
+The `Presentation/` directory contains materials developed for the **ICARM 2026 Summer School**, including:
+
+- presentation slides;
+- supporting figures, graphics, and other assets;
+- an interactive HTML presentation;
+- an interactive Lean blueprint outlining the structure, definitions, lemmas, and proof strategy for the Lorenz trapping region formalization.
+
+The main presentation files are:
+
+- [`Presentation/index.html`](Presentation/index.html) — the primary interactive presentation;
+- [`Presentation/lorenz-lean-blueprint-final.html`](Presentation/lorenz-lean-blueprint-final.html) — the interactive Lean formalization blueprint.
 
 ---
 
