@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Building Lorenz_trapping_region — phase by phase</title>
+<style>
+  :root{
+    --bg:#0b0b0d; --surf:#141418; --ink:#e8e8e6; --dim:#8a8a86; --faint:#5a5a60; --line:#2a2a31;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,sans-serif;overflow:hidden}
+  #app{display:flex;flex-direction:column;height:100%}
+  #prog{height:2px;background:var(--line);flex:none}
+  #prog i{display:block;height:100%;background:#58C4DD;width:0;transition:width .35s}
+  #stage{flex:1;position:relative;overflow:hidden;min-height:0}
+  #stage svg{position:absolute;top:0;left:0}
+  .nlabel{font-family:ui-monospace,Menlo,monospace;font-size:11px;pointer-events:none;dominant-baseline:central}
+  g.node,path.edge{transition:opacity .45s ease}
+  #cap{flex:none;border-top:1px solid var(--line);background:#0e0e11;
+    padding:16px 30px 14px;display:flex;gap:26px;align-items:flex-start;height:216px}
+  #capL{flex:1;min-width:0;overflow-y:auto;height:100%}
+  .step{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:5px}
+  .step b{color:#58C4DD;font-weight:500}
+  #nm{font-family:ui-monospace,Menlo,monospace;font-size:16px;font-weight:500;margin-bottom:7px;word-break:break-word}
+  #gl{font-size:14px;line-height:1.6;color:var(--dim);max-width:820px}
+  #gl b{color:var(--ink);font-weight:400}
+  #capR{width:380px;flex:none}
+  pre{background:var(--surf);border:1px solid var(--line);border-radius:6px;padding:9px 11px;
+    font-family:ui-monospace,Menlo,monospace;font-size:10.5px;line-height:1.55;color:#c9c9c6;
+    overflow:auto;max-height:186px;white-space:pre}
+  #legend{position:absolute;left:16px;top:14px;font-size:11px;pointer-events:none}
+  #legend div{display:flex;align-items:center;gap:7px;margin-bottom:4px;color:var(--faint)}
+  #legend i{width:8px;height:8px;border-radius:2px;flex:none;font-style:normal}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="prog"><i id="progi"></i></div>
+  <div id="stage">
+    <div id="legend"></div>
+  </div>
+  <div id="cap">
+    <div id="capL">
+      <div class="step" id="st"></div>
+      <div id="nm"></div>
+      <div id="gl"></div>
+    </div>
+    <div id="capR"><pre id="src"></pre></div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dagre/0.8.5/dagre.min.js"></script>
+<script>
+const CL = {
+  ph1:{n:'Phase 1 · The dynamical system', c:'#9a998f'},
+  ph2:{n:'Phase 2 · Defining V and Ṽ',     c:'#58C4DD'},
+  ph3:{n:'Phase 3 · The set D and sup c',  c:'#FC6255'},
+  ph4:{n:'Phase 4 · The set E and ∂E',     c:'#83C167'},
+  tool:{n:'Toolkit · replaces Case 1 subcases 1–2', c:'#9085e9'},
+  ph5:{n:'Phase 5 · Trapping region',      c:'#ffffff'}
+};
+
+const N = {
+ params:{l:'LorenzParams',cl:'ph1',k:'structure',ph:'Phase 1',
+  g:'The PDF opens: <b>"Assume the standard Lorenz parameters r, σ, b > 0."</b> Lean bundles those three positivity hypotheses into the structure itself, so no later lemma can quietly forget them. <b>σ_pos</b> alone gets used to divide through by 2σ in Phase 3.',
+  s:`structure LorenzParams where
+  (σ r b : ℝ)
+  σ_pos : 0 < σ
+  r_pos : 0 < r
+  b_pos : 0 < b`},
+ traj:{l:'LorenzTrajectory',cl:'ph1',k:'structure',ph:'Phase 1',
+  g:'The PDF\'s <b>φ : ℝ → ℝ³</b>. A curve, nothing more — no dynamics attached yet.',
+  s:`structure LorenzTrajectory where
+  total : ℝ → ℝ × ℝ × ℝ`},
+ coords:{l:'LorenzTrajectory x / y / z',cl:'ph1',k:'def',ph:'Phase 1',
+  g:'The three components of φ, so the ODE system can be stated one coordinate at a time.',
+  s:`def LorenzTrajectoryx (φ) : ℝ → ℝ := fun t => (φ.total t).1
+def LorenzTrajectoryy (φ) : ℝ → ℝ := fun t => (φ.total t).2.1
+def LorenzTrajectoryz (φ) : ℝ → ℝ := fun t => (φ.total t).2.2`},
+ issol:{l:'IsSolution',cl:'ph1',k:'def',ph:'Phase 1',
+  g:'<b>"Let φ be a function such that φ satisfies the ODE system above."</b> The three HasDerivAt conjuncts are ẋ, ẏ, ż exactly as printed in the PDF.',
+  s:`def IsSolution (p) (φ) : Prop :=
+  (∀ t, HasDerivAt (x φ) (p.σ * (y φ t - x φ t)) t) ∧
+  (∀ t, HasDerivAt (y φ) (p.r*x φ t - y φ t - x φ t*z φ t) t) ∧
+  (∀ t, HasDerivAt (z φ) (x φ t*y φ t - p.b*z φ t) t) ∧
+  (∀ t, DifferentiableAt ℝ φ.total t)`},
+
+ V:{l:'Lyapunov',cl:'ph2',k:'def',ph:'Phase 2 · step 1',
+  g:'<b>V(x,y,z) = rx² + σy² + σ(z − 2r)²</b>. Character for character the PDF\'s definition. Level sets are ellipsoids centred at (0,0,2r) — not at the origin.',
+  s:`def Lyapunov (p) (u : ℝ × ℝ × ℝ) : ℝ :=
+  let (x, y, z) := u
+  p.r * x^2 + p.σ * y^2 + p.σ * (z - 2*p.r)^2`},
+ V_cd:{l:'Lyapunov_ContDiff',cl:'ph2',k:'lemma',ph:'Phase 2 · step 1 · Prove',
+  g:'<b>"Prove: V is continuous and differentiable (as it is a polynomial)."</b> The parenthesis is the whole argument, and <b>fun_prop</b> is the tactic that knows it. Lean gets C^∞ — strictly more than the PDF claims.',
+  s:`lemma Lyapunov_ContDiff (p) : ContDiff ℝ ∞ (Lyapunov p) := by
+  unfold Lyapunov
+  fun_prop`},
+ V_ct:{l:'Lyapunov_Continuous',cl:'ph2',k:'lemma',ph:'Phase 2 · step 1 · Prove',
+  g:'The continuity half. It is the half that gets spent — three times: <b>V attains its max on D</b> (Phase 3, Prove ii), <b>E is compact</b> (Phase 4, Prove i), and <b>∂E lies in a level set</b> (Phase 4, Prove ii). Differentiability of V, despite being proved, is never used again.',
+  s:`lemma Lyapunov_Continuous (p) : Continuous (Lyapunov p) :=
+  (Lyapunov_ContDiff p).continuous`},
+ VAT:{l:'LyapunovAlongTrajectory',cl:'ph2',k:'def',ph:'Phase 2 · step 2',
+  g:'The PDF\'s <b>V ∘ φ</b>, given a name so that Lean has something of type ℝ → ℝ to differentiate.',
+  s:`def LyapunovAlongTrajectory (p) (φ) (t : ℝ) : ℝ :=
+  Lyapunov p (φ.total t)`},
+ Vt:{l:'LyapunovTilde',cl:'ph2',k:'def',ph:'Phase 2 · step 2',
+  g:'The PDF\'s <b>Ṽ</b>. Guessed in advance, justified afterwards.',
+  s:`def LyapunovTilde (p) (u : ℝ × ℝ × ℝ) : ℝ :=
+  let (x, y, z) := u
+  (-2)*p.σ*(p.r*x^2 + y^2 + p.b*(z - p.r)^2)
+    + 2*p.σ*p.b*p.r^2`},
+ Vt_cd:{l:'LyapunovTilde_ContDiff',cl:'ph2',k:'lemma',ph:'Phase 2 · step 2 · Prove i',
+  g:'Same polynomial argument, same one-line tactic.',
+  s:`lemma LyapunovTilde_ContDiff (p) :
+  ContDiff ℝ ∞ (LyapunovTilde p)`},
+ Vt_ct:{l:'LyapunovTilde_Continuous',cl:'ph2',k:'lemma',ph:'Phase 2 · step 2 · Prove i',
+  g:'<b>"Prove i: Ṽ is continuous (as it is a polynomial)."</b> Cashed in at exactly one place: it is what makes <b>D = {Ṽ ≥ 0}</b> closed in Phase 3.',
+  s:`lemma LyapunovTilde_Continuous (p) :
+  Continuous (LyapunovTilde p) :=
+  (LyapunovTilde_ContDiff p).continuous`},
+ alg:{l:'Lyapunov_Derivative_Algebra',cl:'ph2',k:'lemma',ph:'Phase 2 · step 2 · Prove ii',
+  g:'The PDF says <b>"we can apply the chain rule"</b>. This lemma is what the chain rule leaves behind once applied: ∇V·f, written out, <b>is</b> Ṽ. Discharged by <b>ring</b>. Every xyz and every xy cross term cancels — that cancellation is why this V and not another. It is the <b>only</b> declaration in the file where the Lorenz vector field appears.',
+  s:`lemma Lyapunov_Derivative_Algebra (p) (v) :
+  p.r*(2*v.1*(p.σ*(v.2.1 - v.1)))
+  + p.σ*(2*v.2.1*(p.r*v.1 - v.2.1 - v.1*v.2.2))
+  + p.σ*(2*(v.2.2 - 2*p.r)*(v.1*v.2.1 - p.b*v.2.2))
+    = LyapunovTilde p v := by
+  simp [LyapunovTilde]; ring`},
+ VAT_d:{l:'LyapunovAlongTrajectory_Deriv',cl:'ph2',k:'lemma',ph:'Phase 2 · step 2 · Prove ii',
+  g:'Phase 2 delivered: <b>d/dt(V ∘ φ) = Ṽ ∘ φ</b>. One printed line in the PDF; here it is the assembly of the three HasDerivAt laws through .pow, .const_mul and .add, then the ring identity. <b>Past this node the ODE never appears again</b> — everything downstream is topology.',
+  s:`lemma LyapunovAlongTrajectory_Deriv (p) (φ)
+    (hφ : IsSolution p φ) (t : ℝ) :
+  HasDerivAt (LyapunovAlongTrajectory p φ)
+             (LyapunovTilde p (φ.total t)) t`},
+
+ D:{l:'D',cl:'ph3',k:'def',ph:'Phase 3 · Define D',
+  g:'<b>D := {Ṽ ≥ 0}</b>. Identical. The region where V is permitted to grow — the obstruction to "V always falls", and the reason the theorem needs an argument at all.',
+  s:`def D (p) : Set (ℝ × ℝ × ℝ) :=
+  {u | 0 ≤ LyapunovTilde p u}`},
+ absmax:{l:'abs_le_max_one_of_sq_le',cl:'ph3',k:'lemma',ph:'Phase 3 · Prove i · Bounded',
+  g:'No counterpart in the PDF, and it exists only because of one word.',
+  s:`private lemma abs_le_max_one_of_sq_le
+    {x K : ℝ} (h : x ^ 2 ≤ K) : |x| ≤ max K 1`},
+ D_q:{l:'D_quadratic_le',cl:'ph3',k:'lemma',ph:'Phase 3 · Prove i · Bounded',
+  g:'Divides the positive factor <b>2σ</b> out of Ṽ ≥ 0, leaving <b>rx² + y² + b(z−r)² ≤ br²</b>. This is where <b>σ_pos</b> from Phase 1 gets spent — dividing by 2σ only preserves the inequality because σ > 0.',
+  s:`lemma D_quadratic_le (p) (hu : (x,y,z) ∈ D p) :
+    p.r*x^2 + y^2 + p.b*(z - p.r)^2 ≤ p.b*p.r^2`},
+ D_bd:{l:'D_isBounded',cl:'ph3',k:'lemma',ph:'Phase 3 · Prove i · Bounded',
+  g:'<b>"Bounded"</b>, made explicit: D ⊆ closedBall (0,0,r) with a stated radius. A positive definite form bounded above bounds each coordinate on its own — drop the other two terms, each being a square and so ≥ 0. The PDF\'s asserted radius, produced.',
+  s:`lemma D_isBounded (p) : Bornology.IsBounded (D p)
+-- ⊆ closedBall (0,0,r), radius written out in full`},
+ D_cpt:{l:'D_isCompact',cl:'ph3',k:'lemma',ph:'Phase 3 · Prove i',
+  g:'<b>"Since D is closed and bounded in ℝ³, it is compact."</b> Heine–Borel. The crux of the entire proof: <b>the region where V misbehaves is small</b>. Everything after this is leverage on that one fact.',
+  s:`lemma D_isCompact (p) : IsCompact (D p) := by
+  refine Metric.isCompact_of_isClosed_isBounded ?_ ?_
+  · exact isClosed_le continuous_const
+      (LyapunovTilde_Continuous p)
+  · exact D_isBounded p`},
+ Vmax:{l:'V_attainsMaximum_onD',cl:'ph3',k:'lemma',ph:'Phase 3 · Prove ii',
+  g:'<b>"V attains a supremum c on D … guaranteed because V is a continuous function evaluated on a compact set D."</b> Continuous function, compact domain.',
+  s:`lemma V_attainsMaximum_onD (p) :
+    ∃ u ∈ D p, ∀ v ∈ D p,
+      Lyapunov p u ≥ Lyapunov p v`},
+ c:{l:'c',cl:'ph3',k:'noncomputable def',ph:'Phase 3 · Define c',
+  g:'The PDF\'s <b>c</b>. Extracted with <b>Classical.choose</b>, hence noncomputable. Its numeric value never matters anywhere — only the fact that nothing in D exceeds it.',
+  s:`noncomputable def c (p) : ℝ :=
+  Lyapunov p (Classical.choose (V_attainsMaximum_onD p))`},
+
+ F:{l:'F',cl:'ph4',k:'def',ph:'Phase 4 · Define E',
+  g:'<b>"Define some ε > 0 and the set E := {V ≤ c + ε}."</b> The trapping region.',
+  s:`def F (p) : Set (ℝ × ℝ × ℝ) :=
+  {u | Lyapunov p u ≤ c p + 1}`},
+ F_cpt:{l:'F_isCompact',cl:'ph4',k:'lemma',ph:'Phase 4 · Prove i',
+  g:'<b>"E is compact"</b> — closed by continuity of V, bounded. Same shape as D\'s compactness proof. Both halves get spent, in different places: <b>closedness</b> is what FequalBdunionInt needs to split F, and <b>boundedness</b> is now the first conjunct of the main theorem itself.',
+  s:`lemma F_isCompact (p) : IsCompact (F p)
+-- A = √(|c+1|/r),  B = √(|c+1|/σ)`},
+ Fsplit:{l:'FequalBdunionInt',cl:'ph4',k:'lemma',ph:'Phase 4 · (implicit in the PDF)',
+  g:'F closed ⟹ <b>F = interior F ∪ frontier F</b>.',
+  s:`lemma FequalBdunionInt (p) :
+  F p = interior (F p) ∪ frontier (F p)`},
+ dF_lvl:{l:'dF_in_levelset',cl:'ph4',k:'lemma',ph:'Phase 4 · Prove ii',
+  g:'<b>∂E ⊆ {V = c + ε}</b>. The PDF spends a full paragraph: suppose V(w) &lt; c+ε, take an open interval U around V(w) below c+ε, pull it back through continuity to an open V⁻¹(U) ⊆ E, conclude w ∈ int(E), contradict w ∈ ∂E.',
+  s:`lemma dF_in_levelset (p) :
+  ∀ u ∈ frontier (F p), Lyapunov p u = c p + 1 := by
+  intro u hu
+  exact frontier_le_subset_eq (Lyapunov_Continuous p)
+    continuous_const (by simpa [F] using hu)`},
+ dF_dis:{l:'dF_disjoint_from_D',cl:'ph4',k:'lemma',ph:'Phase 4 · Prove iii',
+  g:'<b>∂E ∩ D = ∅.</b> The PDF: <b>"Since ε > 0, we have c + ε > c. But c = sup_D V. If w were in D, V(w) could not be strictly greater than the supremum."</b> The Lean proof is that sentence, line for line. <b>This is the one place ε > 0 does any work</b> — it is what makes the inequality strict, and strictness is the whole theorem.',
+  s:`lemma dF_disjoint_from_D (p) :
+  ∀ u ∈ frontier (F p), u ∉ D p`},
+ dF_neg:{l:'LyapunovTilde_negative_on_dF',cl:'ph4',k:'lemma',ph:'Phase 4 · Prove iv',
+  g:'<b>Ṽ &lt; 0 on ∂E.</b> Immediate from (iii) and the definition of D — "∂E ⊂ Dᶜ, and Dᶜ is exactly where Ṽ &lt; 0". In Lean: <b>lt_of_not_ge</b> applied to the previous lemma. Geometrically, this is the payoff: the flow crosses the boundary strictly inward, at every point, with no exception.',
+  s:`lemma LyapunovTilde_negative_on_dF (p) :
+  ∀ u ∈ frontier (F p), LyapunovTilde p u < 0`},
+
+ fe_cl:{l:'firstExit_mem_closure',cl:'tool',k:'theorem',ph:'Phase 5 · Case 1 · Subcase 1',
+  g:'This is the PDF\'s <b>Case 1, Subcase 1</b> in general form: <b>"there exists a sequence tₙ → τ with tₙ ∈ S … since (int E)ᶜ is closed it contains its limit points, so φ(τ) ∈ (int E)ᶜ."</b> Lean states it without sequences: a right-continuous map sends <b>inf S</b> into the <b>closure</b> of the image. Nothing about Lorenz appears in it.',
+  s:`theorem RightContinuous.firstExit_mem_closure
+    (hf : ∀ x, ContinuousWithinAt f (Ioi x) x)
+    (hs : s.Nonempty) (hbs : BddBelow s)
+    (hfs : MapsTo f s E) :
+    f (sInf s) ∈ closure E`},
+ fe_fr:{l:'firstExit_mem_frontier',cl:'tool',k:'theorem',ph:'Phase 5 · Case 1 · Subcases 1–2',
+  g:'<b>The first exit time lands on the frontier.</b> You cannot leave a set without touching its boundary.',
+  s:`theorem Continuous.firstExit_mem_frontier
+    (hf : Continuous f) (hab : a ≤ b)
+    (hfa : f a ∈ E) (hfb : f b ∉ E) :
+    f (sInf {x | a ≤ x ∧ f x ∉ E}) ∈ frontier E`},
+ case1:{l:'Lorenz_trapping_region_case1',cl:'ph5',k:'theorem',ph:'Phase 5 · Case 1',
+  g:'<b>Case 1: φ(t₀) ∈ int(E).</b> Suppose not. Set S = {t ≥ t₀ | φ(t) ∉ int(E)}, τ = inf S — nonempty by assumption, bounded below by t₀, exactly as the PDF sets it up. What survives is <b>Subcase 3, verbatim</b>: for t &lt; τ the trajectory is still interior so V ≤ c+ε; at τ, V = c+ε; so the left difference quotient is ≥ 0; so V̇(τ) ≥ 0; but V̇ &lt; 0 on ∂E. Contradiction.',
+  s:`theorem Lorenz_trapping_region_case1 (p) (φ)
+    (hφ : IsSolution p φ) (t0 : ℝ)
+    (hφ_t0 : φ.total t0 ∈ interior (F p)) :
+  ∀ t > t0, φ.total t ∈ interior (F p)`},
+ case2:{l:'Lorenz_trapping_region_case2',cl:'ph5',k:'theorem',ph:'Phase 5 · Case 2',
+  g:'<b>Case 2: φ(t₀) ∈ ∂E.</b> Both subcases survive intact. <b>Subcase 1</b>: some intermediate t″ ∈ (t₀,t′) has φ(t″) ∈ int(E) — then Case 1 finishes it. <b>Subcase 2</b>: no such point, so φ(t) ∈ ∂E ∪ Eᶜ throughout (t₀,t′], where V ≥ c+ε; with V(φ(t₀)) = c+ε exactly, the <b>right</b> difference quotient at t₀ is ≥ 0, contradicting V̇(t₀) &lt; 0. Same lemma as Case 1, other one-sided limit — the .2 projection instead of .1.',
+  s:`theorem Lorenz_trapping_region_case2 (p) (φ)
+    (hφ : IsSolution p φ) (t0 : ℝ)
+    (hφ_t0 : φ.total t0 ∈ frontier (F p)) :
+  ∀ t > t0, φ.total t ∈ interior (F p)`},
+ main:{l:'Lorenz_trapping_region',cl:'ph5',k:'theorem',ph:'Phase 5 · Theorem',
+  g:'<b>"If φ(t₀) ∈ E, then φ(t) ∈ int(E) for all t > t₀."</b> Four moves: <b>use F p</b> to supply the witness, <b>F_isCompact.isBounded</b> to discharge the boundedness conjunct, <b>FequalBdunionInt</b> to split F into interior ∪ frontier, and then each piece to its case. Note that the conclusion is <b>stronger than the hypothesis</b>: land anywhere in F — even exactly on the boundary — and at every later instant you are strictly inside. The trapping region does not merely hold you; it pulls you off its own edge.',
+  s:`theorem Lorenz_trapping_region (p) (φ)
+    (hφ : IsSolution p φ) :
+  ∃ F : Set (ℝ × ℝ × ℝ),
+    Bornology.IsBounded F ∧
+    ∀ t0 : ℝ, φ.total t0 ∈ F →
+      (∀ t > t0, φ.total t ∈ interior F) := by
+  use F p
+  rw [and_iff_left ?_]
+  · refine IsCompact.isBounded ?_
+    apply F_isCompact
+  · intro t0 h1
+    ...`}
+};
+
+const E = [
+ ['fe_cl','fe_fr'],
+ ['traj','coords','def'],['coords','issol','def'],['params','issol','def'],
+ ['params','V','def'],['params','Vt','def'],
+ ['V','V_cd'],['V_cd','V_ct'],['V','VAT','def'],
+ ['Vt','Vt_cd'],['Vt_cd','Vt_ct'],['Vt','alg','def'],
+ ['issol','VAT_d','def'],['VAT','VAT_d','def'],['alg','VAT_d'],
+ ['Vt','D','def'],
+ ['D','D_q','def'],['D_q','D_bd'],['absmax','D_bd'],
+ ['D_bd','D_cpt'],['Vt_ct','D_cpt'],
+ ['D_cpt','Vmax'],['V_ct','Vmax'],['V','Vmax','def'],['D','Vmax','def'],
+ ['Vmax','c'],['V','c','def'],
+ ['c','F'],['V','F','def'],
+ ['F','F_cpt','def'],['V_ct','F_cpt'],['c','F_cpt','def'],
+ ['F_cpt','Fsplit'],
+ ['F','dF_lvl','def'],['V_ct','dF_lvl'],['c','dF_lvl','def'],
+ ['dF_lvl','dF_dis'],['Vmax','dF_dis'],['D','dF_dis','def'],
+ ['dF_dis','dF_neg'],['D','dF_neg','def'],
+ ['fe_fr','case1'],['dF_lvl','case1'],['dF_neg','case1'],['VAT_d','case1'],
+ ['F','case1','def'],['issol','case1','def'],
+ ['case1','case2'],['Fsplit','case2'],['dF_lvl','case2'],['dF_neg','case2'],
+ ['VAT_d','case2'],['F','case2','def'],
+ ['Fsplit','main'],['case1','main'],['case2','main'],['F_cpt','main'],['F','main','def']
+];
+
+const ORDER = ['params','traj','coords','issol','V','V_cd','V_ct','VAT','Vt','Vt_cd','Vt_ct',
+  'alg','VAT_d','D','absmax','D_q','D_bd','D_cpt','Vmax','c','F','F_cpt','Fsplit',
+  'dF_lvl','dF_dis','dF_neg','fe_cl','fe_fr','case1','case2','main'];
+
+let showDef=true, step=0, playing=false, timer=null;
+const NSU='http://www.w3.org/2000/svg';
+const stage=document.getElementById('stage');
+let svg,root,nodes={},edges=[],gw=0,gh=0;
+let cam={x:0,y:0,k:1}, tgt={x:0,y:0,k:1};
+
+function ancestors(id){
+  const out=new Set(), st=[id];
+  while(st.length){ const x=st.pop();
+    for(const [a,b,kd] of E) if(b===x && !out.has(a) && (showDef||kd!=='def')){ out.add(a); st.push(a); } }
+  return out;
+}
+
+function build(){
+  const g=new dagre.graphlib.Graph();
+  g.setGraph({rankdir:'TB',nodesep:18,ranksep:50,marginx:40,marginy:40});
+  g.setDefaultEdgeLabel(()=>({}));
+  for(const id in N) g.setNode(id,{width:Math.max(148,N[id].l.length*6.6+28),height:38});
+  for(const [a,b,kd] of E){ if(kd==='def'&&!showDef) continue; g.setEdge(a,b,{kind:kd||'proof'}); }
+  dagre.layout(g);
+  gw=g.graph().width; gh=g.graph().height;
+
+  stage.querySelectorAll('svg').forEach(e=>e.remove());
+  svg=document.createElementNS(NSU,'svg');
+  svg.setAttribute('width',gw); svg.setAttribute('height',gh);
+  const defs=document.createElementNS(NSU,'defs');
+  defs.innerHTML=`<marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1L9 5L1 9" fill="none" stroke="context-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></marker>`;
+  svg.appendChild(defs);
+  root=document.createElementNS(NSU,'g'); svg.appendChild(root);
+
+  edges=[];
+  for(const e of g.edges()){
+    const inf=g.edge(e), pts=inf.points;
+    const p=document.createElementNS(NSU,'path');
+    let d=`M${pts[0].x},${pts[0].y}`;
+    for(let i=1;i<pts.length-1;i++){
+      const m={x:(pts[i].x+pts[i+1].x)/2,y:(pts[i].y+pts[i+1].y)/2};
+      d+=` Q${pts[i].x},${pts[i].y} ${m.x},${m.y}`;
+    }
+    d+=` L${pts[pts.length-1].x},${pts[pts.length-1].y}`;
+    p.setAttribute('d',d); p.setAttribute('fill','none');
+    p.setAttribute('stroke-width',inf.kind==='def'?1:1.5);
+    if(inf.kind==='def') p.setAttribute('stroke-dasharray','3 4');
+    p.setAttribute('marker-end','url(#ah)');
+    p.setAttribute('class','edge');
+    root.appendChild(p);
+    edges.push({el:p,a:e.v,b:e.w,kind:inf.kind});
+  }
+  nodes={};
+  for(const id of g.nodes()){
+    const pos=g.node(id), n=N[id], col=CL[n.cl].c;
+    const el=document.createElementNS(NSU,'g'); el.setAttribute('class','node');
+    el.setAttribute('transform',`translate(${pos.x-pos.width/2},${pos.y-pos.height/2})`);
+    const r=document.createElementNS(NSU,'rect');
+    r.setAttribute('width',pos.width); r.setAttribute('height',pos.height);
+    r.setAttribute('rx',7); r.setAttribute('fill','#141418');
+    r.setAttribute('stroke',col); r.setAttribute('stroke-width',1);
+    el.appendChild(r);
+    const t=document.createElementNS(NSU,'text');
+    t.setAttribute('class','nlabel'); t.setAttribute('x',pos.width/2); t.setAttribute('y',pos.height/2+1);
+    t.setAttribute('text-anchor','middle'); t.setAttribute('fill',col); t.textContent=n.l;
+    el.appendChild(t);
+    el.addEventListener('click',()=>{ const i=ORDER.indexOf(id); if(i>=0){ setPlay(false); go(i);} });
+    root.appendChild(el);
+    nodes[id]={el,rect:r,pos,col};
+  }
+  stage.appendChild(svg);
+}
+
+function go(i){
+  step=Math.max(0,Math.min(ORDER.length-1,i));
+  const cur=ORDER[step], anc=ancestors(cur), shown=new Set(ORDER.slice(0,step+1));
+  for(const id in nodes){
+    const {el,rect}=nodes[id];
+    if(!shown.has(id)){ el.style.opacity=0; continue; }
+    if(id===cur){ el.style.opacity=1; rect.setAttribute('stroke-width',2.2); rect.setAttribute('fill','#242833'); }
+    else if(anc.has(id)){ el.style.opacity=1; rect.setAttribute('stroke-width',1); rect.setAttribute('fill','#141418'); }
+    else { el.style.opacity=.2; rect.setAttribute('stroke-width',1); rect.setAttribute('fill','#141418'); }
+  }
+  for(const e of edges){
+    const live=shown.has(e.a)&&shown.has(e.b);
+    const hot=(e.b===cur||anc.has(e.b))&&(anc.has(e.a)||e.a===cur);
+    e.el.style.opacity=!live?0:(hot?1:.14);
+    e.el.setAttribute('stroke', hot?(e.kind==='def'?'#3f5a6b':'#58C4DD'):'#4c4c58');
+  }
+  const n=N[cur];
+  document.getElementById('st').innerHTML=`Step ${step+1} of ${ORDER.length} · ${n.k} · <b>${n.ph}</b>`;
+  const nm=document.getElementById('nm');
+  nm.textContent=n.l; nm.style.color=CL[n.cl].c;
+  document.getElementById('gl').innerHTML=n.g;
+  document.getElementById('src').textContent=n.s;
+  document.getElementById('progi').style.width=((step+1)/ORDER.length*100)+'%';
+  document.getElementById('capL').scrollTop=0;
+  frame(shown);
+}
+
+function frame(shown){
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const id of shown){ const p=nodes[id].pos;
+    x0=Math.min(x0,p.x-p.width/2); x1=Math.max(x1,p.x+p.width/2);
+    y0=Math.min(y0,p.y-p.height/2); y1=Math.max(y1,p.y+p.height/2); }
+  const pad=70, r=stage.getBoundingClientRect();
+  const w=(x1-x0)+pad*2, h=(y1-y0)+pad*2;
+  const k=Math.max(0.3,Math.min(1.15,Math.min(r.width/w,r.height/h)));
+  tgt={k, x:r.width/2-((x0+x1)/2)*k, y:r.height/2-((y0+y1)/2)*k};
+}
+function tick(){
+  cam.x+=(tgt.x-cam.x)*0.12; cam.y+=(tgt.y-cam.y)*0.12; cam.k+=(tgt.k-cam.k)*0.12;
+  if(root) root.setAttribute('transform',`translate(${cam.x},${cam.y}) scale(${cam.k})`);
+  requestAnimationFrame(tick);
+}
+function setPlay(on){
+  playing=on;
+  clearInterval(timer);
+  if(on) timer=setInterval(()=>{ if(step>=ORDER.length-1){ setPlay(false); return; } go(step+1); },4200);
+}
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'){ setPlay(false); go(step+1); }
+  if(e.key==='ArrowLeft'){ setPlay(false); go(step-1); }
+  if(e.code==='Space'){ e.preventDefault(); setPlay(!playing); }
+  if(e.key==='End'||e.key==='e'){ setPlay(false); go(ORDER.length-1); }
+  if(e.key==='Home'){ setPlay(false); go(0); }
+  if(e.key==='d'){ showDef=!showDef; build(); go(step); }
+});
+addEventListener('resize',()=>go(step));
+document.getElementById('legend').innerHTML=Object.values(CL)
+  .map(v=>`<div><i style="background:${v.c}"></i>${v.n}</div>`).join('');
+build(); go(0); tick();
+</script>
+</body>
+</html>
