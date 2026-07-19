@@ -26,7 +26,7 @@ The long-term objective of this repository is to construct a fully machine-verif
 │   ├── assets/
 │   ├── index.html
 │   └── lorenz-lean-blueprint-final.html
-├── assets/                                    # Assets for the repository website
+├── assets/                                    # Assets for the repository
 ├── .gitattributes
 ├── .gitignore
 ├── README.md
