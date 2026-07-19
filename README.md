@@ -19,13 +19,20 @@ The long-term objective of this repository is to construct a fully machine-verif
 
 ```
 .
-├── LorenzTrappingRegionLemma/    # Lean source files
-│   └── Basic.lean
-├── Presentation/                 # ICARM Summer School presentation
-├── assets/                       # Images and figures used by the presentation
+├── LorenzTrappingRegionLemma/          # Lean source files
+│   ├── Basic.lean
+│   └── Proof.pdf
+├── Presentation/                       # ICARM Summer School presentation
+│   ├── assets/
+│   ├── index.html
+│   └── lorenz-lean-blueprint-final.html
+├── assets/                             # Assets for the repository website
+├── .gitattributes
+├── .gitignore
 ├── README.md
-├── lakefile.toml
+├── index.html
 ├── lake-manifest.json
+├── lakefile.toml
 └── lean-toolchain
 ```
 
