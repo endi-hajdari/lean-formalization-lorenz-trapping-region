@@ -1,7 +1,7 @@
 /-
 Copyright (c) 2026 ICARM Summer School. All rights reserved.
 Released under Apache 2.0 license as described in the file LICENSE.
-Authors: ICARM Summer School participants
+Authors: Abdullah Ahmed, Endi Hajdari, Pankaj Singh, and Swati
 -/
 
 import Mathlib.Analysis.Calculus.ContDiff.Defs
