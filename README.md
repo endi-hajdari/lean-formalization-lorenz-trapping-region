@@ -1,3 +1,1 @@
-# Lorenz Trapping Region Lemma
-
-A Lean 4 + mathlib project for formalizing the Lorenz trapping region lemma.
+# Lean Formalization of the Lorenz Trapping Region Lemma
